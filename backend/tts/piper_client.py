@@ -3,16 +3,24 @@ import json
 import os
 import re
 import subprocess
+import sys
 import wave
 
 from langdetect import detect, DetectorFactory
 from langdetect.lang_detect_exception import LangDetectException
 
+from backend.settings import settings
+
 DetectorFactory.seed = 0
 
-_VOICES_DIR = os.environ.get("PIPER_VOICES_DIR", "/data/voices")
-_VOICE_ES = os.environ.get("PIPER_VOICE_ES", "es_MX-claude-high")
-_VOICE_EN = os.environ.get("PIPER_VOICE_EN", "en_US-amy-medium")
+
+def _piper_cmd() -> list[str]:
+    """Return the piper command. Prefers the piper-tts Python wrapper."""
+    python_exe = sys.executable
+    venv_piper = os.path.join(os.path.dirname(python_exe), "piper")
+    if os.path.isfile(venv_piper) and os.access(venv_piper, os.X_OK):
+        return [venv_piper]
+    return ["piper"]
 
 
 def _strip_markdown(text: str) -> str:
@@ -27,18 +35,18 @@ def select_voice(text: str) -> str:
     """Return the Piper voice filename (without extension) matching the detected language."""
     cleaned = _strip_markdown(text)
     if not cleaned:
-        return _VOICE_ES
+        return settings.PIPER_VOICE_ES
     try:
         lang = detect(cleaned)
         if lang == "en":
-            return _VOICE_EN
+            return settings.PIPER_VOICE_EN
     except LangDetectException:
         pass
-    return _VOICE_ES
+    return settings.PIPER_VOICE_ES
 
 
 def _get_sample_rate(voice_name: str) -> int:
-    config_path = os.path.join(_VOICES_DIR, f"{voice_name}.onnx.json")
+    config_path = os.path.join(settings.PIPER_VOICES_DIR, f"{voice_name}.onnx.json")
     try:
         with open(config_path) as fh:
             cfg = json.load(fh)
@@ -64,9 +72,9 @@ def synthesize(text: str) -> tuple[bytes, str]:
     if not clean_text:
         raise ValueError("Text is empty after stripping markdown")
 
-    model_path = os.path.join(_VOICES_DIR, f"{voice}.onnx")
+    model_path = os.path.join(settings.PIPER_VOICES_DIR, f"{voice}.onnx")
     proc = subprocess.run(
-        ["piper", "--model", model_path, "--output_raw"],
+        _piper_cmd() + ["--model", model_path, "--output_raw"],
         input=clean_text.encode("utf-8"),
         capture_output=True,
         timeout=60,
