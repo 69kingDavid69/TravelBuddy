@@ -8,23 +8,14 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- Stage 2: Download Piper voices ----
-FROM python:3.13-slim AS voices
+FROM python:3.12-slim AS voices
 
 RUN pip install --no-cache-dir huggingface_hub
-WORKDIR /data/voices
-RUN python3 -c "
-from huggingface_hub import hf_hub_download
-hf_hub_download(repo_id='rhasspy/piper-voices', filename='es/es_MX/claude/high/es_MX-claude-high.onnx', local_dir='.')
-hf_hub_download(repo_id='rhasspy/piper-voices', filename='es/es_MX/claude/high/es_MX-claude-high.onnx.json', local_dir='.')
-hf_hub_download(repo_id='rhasspy/piper-voices', filename='en/en_US/amy/medium/en_US-amy-medium.onnx', local_dir='.')
-hf_hub_download(repo_id='rhasspy/piper-voices', filename='en/en_US/amy/medium/en_US-amy-medium.onnx.json', local_dir='.')
-" && \
-    mv es/es_MX/claude/high/es_MX-claude-high.onnx* . && \
-    mv en/en_US/amy/medium/en_US-amy-medium.onnx* . && \
-    rm -rf es en
+COPY scripts/download_voices.py /tmp/download_voices.py
+RUN python3 /tmp/download_voices.py
 
 # ---- Stage 3: Final runtime ----
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -33,8 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir piper-tts==1.4.2
+RUN pip install --no-cache-dir --default-timeout=300 -r requirements.txt && \
+    pip install --no-cache-dir --default-timeout=300 piper-tts==1.4.2
 
 COPY backend/ ./backend/
 COPY --from=frontend-builder /app/frontend/dist ./backend/static/
