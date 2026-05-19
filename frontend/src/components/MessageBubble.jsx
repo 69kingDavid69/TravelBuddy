@@ -1,8 +1,10 @@
 import ToolBadge from "./ToolBadge";
+import AudioPlayer from "./AudioPlayer";
 
 export default function MessageBubble({ message }) {
   const isUser = message.role === "user";
   const hasTools = message.tools_used && message.tools_used.length > 0;
+  const hasAudio = !!message.audio_url;
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -23,6 +25,7 @@ export default function MessageBubble({ message }) {
         >
           {message.content}
         </div>
+        {hasAudio && <AudioPlayer audioUrl={message.audio_url} />}
       </div>
     </div>
   );
