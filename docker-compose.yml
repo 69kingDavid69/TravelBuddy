@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - PIPER_VOICES_DIR=/data/voices
+      - CHROMA_DIR=/data/chroma
+      - ALLOWED_ORIGINS=http://localhost:8080
+    volumes:
+      - voiceagent-data:/data
+    restart: unless-stopped
+
+volumes:
+  voiceagent-data:
