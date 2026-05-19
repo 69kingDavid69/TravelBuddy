@@ -13,8 +13,8 @@ from langchain_core.tools import tool
 # its rate-limit tolerance.
 _last_call_ts: float = 0.0
 _MIN_INTERVAL: float = 1.5
-_MAX_RETRIES: int = 3
-_BACKOFF_BASE: float = 3.0
+_MAX_RETRIES: int = 1
+_BACKOFF_BASE: float = 2.0
 
 
 class WebSearchInput(BaseModel):
