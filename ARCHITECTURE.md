@@ -84,7 +84,7 @@ The agent must reply in the same language the user wrote in, and the TTS layer m
 |   - LLM node  -->  DeepSeek V4 Flash (OpenAI-compatible)              |
 |   - Tool node                                                         |
 |       * currency_converter      (open.er-api.com, no key)             |
-|       * web_search              (duckduckgo-search, no key)           |
+|       * web_search              (Tavily API + Wikipedia fallback)     |
 |       * rag_retriever           (ChromaDB local)                      |
 |   - Trace collector emits tools_used[] in every response              |
 |                                                                        |
@@ -101,13 +101,13 @@ The agent must reply in the same language the user wrote in, and the TTS layer m
 +------------------------------------------------------------------------+
               |                                  |
               v                                  v
-   +--------------------+              +--------------------+
-   |   DeepSeek API     |              |   DuckDuckGo       |
-   |   (paid)           |              |   open.er-api.com  |
-   +--------------------+              +--------------------+
+   +--------------------+              +------------------------------+
+   |   LLM API          |              |   Tavily API (web search)    |
+   |   (DeepSeek/Groq)  |              |   open.er-api.com (currency) |
+   +--------------------+              +------------------------------+
 ```
 
-A single container holds backend, frontend, agent, and TTS. The only paid external dependency is the DeepSeek API.
+A single container holds backend, frontend, agent, and TTS. External dependencies: an LLM API (DeepSeek paid, or Groq free) and optionally Tavily (free 1k/month).
 
 ---
 
@@ -115,12 +115,12 @@ A single container holds backend, frontend, agent, and TTS. The only paid extern
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| LLM | DeepSeek V4 Flash (`deepseek-chat`) | OpenAI-compatible, supports tool calls, lowest cost per token, sufficient quality |
-| Agent framework | LangGraph | Native streaming of tool events, clean separation of LLM/tool nodes, durable checkpointer for session memory |
+| LLM | Any OpenAI-compatible provider — Groq (free) or DeepSeek (paid) | Provider is configurable via `LLM_API_KEY / LLM_BASE_URL / LLM_MODEL`; DeepSeek fallback for backwards compatibility |
+| Agent framework | LangGraph | ReAct topology with per-turn tool-call cap (max 3) and a `final_node` to force a conclusive answer when the cap is hit |
 | Backend | FastAPI + Uvicorn | Async, Pydantic validation, single-file simplicity |
 | TTS | Piper (rhasspy/piper) | CPU-only neural TTS, voices available for Spanish and English, runs in shared-cpu Fly machines |
 | Language detection | `langdetect` | Tiny (~1MB), no model download, fast, returns ISO codes; used to pick the Piper voice |
-| Web search | `duckduckgo-search` | No API key, free, sufficient for evaluator demos |
+| Web search | [Tavily](https://tavily.com) REST API + Wikipedia fallback | Tavily is purpose-built for AI agents (no scraping), free 1k/month; Wikipedia fallback ensures the tool always returns something even without a key |
 | Currency | open.er-api.com | No API key, free, simple JSON |
 | Vector DB | ChromaDB embedded | No external service, persists to a file |
 | Embeddings | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Multilingual, CPU-friendly, ~120MB |
@@ -129,7 +129,7 @@ A single container holds backend, frontend, agent, and TTS. The only paid extern
 | Container | Docker multi-stage | One image, one deploy command |
 | Hosting | Fly.io | Single-command deploy, Docker-native, volumes, auto-stop |
 
-Every component is open source. DeepSeek is the only paid dependency.
+Every component is open source. All external APIs offer a free tier sufficient for development and demos.
 
 ---
 
@@ -141,12 +141,13 @@ Single-page React app built with Vite. Tailwind for styling. No state management
 
 Components:
 
-- `ChatWindow` — scrollable message list.
-- `MessageBubble` — renders one message; if `tools_used` is non-empty it shows a `ToolBadge` for each tool above the text.
-- `ToolBadge` — colored pill with the tool name; persists in history, not just during loading.
-- `ModeSelector` — radio buttons: `text` or `voice`. Default `text`.
-- `InputBar` — text input + send button. Disabled while a request is in flight.
-- `AudioPlayer` — wraps an HTML5 `<audio>` element; receives a blob URL.
+- `Sidebar` — collapsible session list with new-conversation button (⌘N) and per-session delete on hover.
+- `TopBar` — hamburger menu toggle, mode selector (text/voice), UI language toggle (EN/ES), theme toggle (light/dark), clear conversation.
+- `ChatWindow` — scrollable message list with suggested-question chips when empty.
+- `MessageBubble` — renders one message; shows `ToolTrace` badges above the text; action bar (copy with flash feedback, like/dislike toggle) on hover.
+- `ToolTrace` — colored pill badges per tool; persists in history.
+- `InputBar` — text input + send/stop button. Disabled while a request is in flight.
+- `AudioPlayer` — wraps an HTML5 `<audio>` element; receives a blob URL; shows voice name from `X-TTS-Voice` header.
 
 State shape (single source of truth in `App.jsx`):
 
@@ -179,31 +180,34 @@ Static files (the React build) are mounted at `/` so a single Fly app serves eve
 
 ### 5.3 Agent
 
-LangGraph state machine with the standard ReAct-style topology:
+LangGraph state machine with a ReAct-style topology extended with a `final_node`:
 
 ```
-START -> llm_node -> (tool_calls?) -> tool_node -> llm_node -> END
+START -> llm_node -> (tool_calls? + under cap?) -> tool_node -> llm_node
+                  -> (tool_calls? + cap exceeded?) -> final_node -> END
+                  -> (no tool_calls?) -> END
 ```
 
 Key implementation points:
 
 - `MemorySaver` checkpointer keyed by `thread_id = session_id`.
-- Before invoking the LLM, the message list is sliced to the **last 14 entries** (7 user + 7 assistant pairs). The system prompt is always prepended and is not counted in the window.
-- The system prompt lives in `backend/prompts/system.md` and is loaded once at startup. It contains at least five numbered rules covering role, tone, tool-usage policy, restrictions, bilingual language behavior (reply in the user's language, Spanish or English), and voice-mode formatting (avoid markdown, emojis, and long URLs because they degrade TTS quality).
-- A trace collector subscribes to LangGraph's event stream and collects the names of every tool that fired during the turn. This list is returned as `tools_used` in the response.
+- Before invoking the LLM, the message list is sliced to the **last 14 entries** (7 user + 7 assistant pairs). The system prompt is always prepended and is not counted in the window. `apply_window` also removes orphaned AIMessages whose `tool_calls` were never answered by `ToolMessages` — this prevents 400 errors on multi-turn conversations when the cap was hit in a prior turn.
+- **Per-turn tool-call cap:** the router counts tool invocations since the last `HumanMessage`. When the count exceeds 3, it routes to `final_node` instead of `tool_node`. `final_node` strips any pending `tool_calls` from the message history and invokes the LLM without tools to force a conclusive answer.
+- The system prompt lives in `backend/prompts/system.md` and is loaded once at startup. It contains six numbered rules covering role, tone, tool-usage policy, restrictions, bilingual language behavior, and voice-mode formatting.
+- A trace collector returns unique tool names called in the current turn as `tools_used[]` in the response.
 
-LLM wiring:
+LLM wiring (configurable provider):
 
 ```python
 ChatOpenAI(
-    model="deepseek-chat",
-    base_url="https://api.deepseek.com/v1",
-    api_key=settings.DEEPSEEK_API_KEY,
+    model=settings.effective_model,       # LLM_MODEL or DEEPSEEK_MODEL
+    base_url=settings.effective_base_url, # LLM_BASE_URL or DEEPSEEK_BASE_URL
+    api_key=settings.effective_api_key,   # LLM_API_KEY or DEEPSEEK_API_KEY
     temperature=0.2,
 )
 ```
 
-The aliases `deepseek-chat` and `deepseek-reasoner` are scheduled for deprecation in mid-2026. The model name is centralized in `settings.py` so it can be switched to `deepseek-v4-flash` with one change.
+Provider is selected by setting `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`. If these are empty the legacy `DEEPSEEK_*` variables are used as fallback, maintaining backwards compatibility.
 
 ### 5.4 Tools
 
@@ -218,9 +222,10 @@ Every tool is a LangChain `@tool` with a Pydantic args schema. The agent decides
 **Tool 2 — `web_search`**
 
 - Args: `query: str`, `max_results: int = 5`.
-- Implementation: `duckduckgo_search.DDGS().text(...)`.
+- Implementation: POST to Tavily's REST API (`https://api.tavily.com/search`) when `TAVILY_API_KEY` is set. Transparent fallback to Wikipedia's search API (`en.wikipedia.org/w/api.php`) when the key is absent or Tavily fails.
 - Returns: list of `{title, snippet, url}`.
-- Rate-limit protection: a 1-second floor between consecutive calls, retried once on `RatelimitException`.
+- Rate-limit protection: a 1-second floor between consecutive calls.
+- No scraping — both sources provide stable JSON APIs designed for programmatic access.
 
 **Tool 3 — `rag_retriever`**
 
@@ -343,8 +348,12 @@ firstname-lastname-voiceagent/
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DEEPSEEK_API_KEY` | yes | — | API key for DeepSeek. Set with `fly secrets set` in production. |
-| `DEEPSEEK_MODEL` | no | `deepseek-chat` | Override the model name. Switch to `deepseek-v4-flash` before alias deprecation. |
+| `LLM_API_KEY` | yes* | — | API key for the LLM provider. Use Groq (`gsk_…`) or DeepSeek (`sk-…`). |
+| `LLM_BASE_URL` | yes* | — | OpenAI-compatible base URL for the LLM. |
+| `LLM_MODEL` | yes* | — | Model identifier (e.g. `llama-3.3-70b-versatile` for Groq). |
+| `DEEPSEEK_API_KEY` | yes* | — | Legacy DeepSeek key — used as fallback when `LLM_API_KEY` is not set. |
+| `DEEPSEEK_MODEL` | no | `deepseek-chat` | Legacy fallback model name. |
+| `TAVILY_API_KEY` | no | — | Tavily API key for `web_search`. Free 1k/month at [tavily.com](https://tavily.com). Falls back to Wikipedia if unset. |
 | `PIPER_VOICE_ES` | no | `es_MX-claude-high` | Spanish Piper ONNX voice model filename (without extension). |
 | `PIPER_VOICE_EN` | no | `en_US-amy-medium` | English Piper ONNX voice model filename (without extension). |
 | `PIPER_VOICES_DIR` | no | `/data/voices` | Where voice files are stored. |
@@ -352,6 +361,8 @@ firstname-lastname-voiceagent/
 | `RAG_SOURCE_URL` | yes | — | URL ingested by the RAG pipeline. Documented in README. |
 | `ALLOWED_ORIGINS` | no | `http://localhost:5173` | Comma-separated CORS origins. |
 | `MEMORY_WINDOW` | no | `7` | Number of message pairs kept in memory. |
+
+\* Either `LLM_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL` **or** `DEEPSEEK_API_KEY` must be set.
 
 `.env.example` ships in the repo with every key listed and no real values. No secrets are hardcoded anywhere in the codebase.
 
@@ -490,9 +501,11 @@ Do not start a block until the previous one passes its test. Commit after each b
 
 **Acceptance test:**
 - "Convert 100 EUR to COP": response includes `tools_used: ["currency_converter"]` and a sensible number.
-- "What is happening in Medellin this weekend?": response includes `tools_used: ["web_search"]`.
+- "What is happening in Medellin this weekend?": response includes `tools_used: ["web_search"]` (badge appears once even if Tavily is not yet configured).
 - "Hi, how are you?": response has `tools_used: []`.
 - Memory from Block 3 still works (regression check).
+
+> **Note on web_search:** configure `TAVILY_API_KEY` (free at [tavily.com](https://tavily.com)) for live web results. Without it the tool transparently falls back to Wikipedia, which satisfies the badge requirement but cannot answer real-time queries (current events, flights, prices).
 
 ---
 

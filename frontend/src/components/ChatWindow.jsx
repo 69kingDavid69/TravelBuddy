@@ -1,21 +1,29 @@
-/**
- * Scrollable container that renders the list of chat messages.
- * Displays a placeholder prompt when the conversation is empty
- * to guide the user toward their first interaction.
- */
-import MessageBubble from "./MessageBubble";
+import React, { useEffect, useRef } from "react";
+import EmptyState from "./EmptyState.jsx";
+import MessageBubble from "./MessageBubble.jsx";
 
-export default function ChatWindow({ messages }) {
+/**
+ * Scrollable message list. Auto-scrolls to the bottom whenever the messages
+ * array changes — covers both new turns and streaming text growth.
+ */
+export default function ChatWindow({ messages, mode, onPick, t }) {
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-gray-50">
-      {messages.length === 0 && (
-        <p className="text-gray-400 text-center mt-8">
-          Start a conversation with TravelBuddy.
-        </p>
+    <div className="tb-chat" ref={scrollRef}>
+      {messages.length === 0 ? (
+        <EmptyState onPick={onPick} t={t} />
+      ) : (
+        <div className="tb-thread">
+          {messages.map((m) => (
+            <MessageBubble key={m.id} m={m} mode={mode} t={t} />
+          ))}
+        </div>
       )}
-      {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} />
-      ))}
     </div>
   );
 }

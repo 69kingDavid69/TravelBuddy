@@ -1,72 +1,90 @@
-/**
- * Custom hook encapsulating all chat-related state and side-effects.
- * Handles optimistic user-message insertion, async API calls, optional TTS
- * synthesis for voice mode, and error display.
- */
-import { useState, useCallback } from "react";
-import { postChat, postTTS } from "../api";
+import { useState, useCallback, useRef } from "react";
+import { postChat, postTTS } from "../api.js";
 
+/**
+ * useChat — owns the chat thread for a single session.
+ *
+ * Flow per turn:
+ *   1. Append the user message immediately.
+ *   2. Append an assistant placeholder with isLoading = true. The UI shows a
+ *      "thinking" state — the tool badges below the bubble will fill in once
+ *      the backend response arrives. (Replies are not streamed: the backend
+ *      returns a single payload.)
+ *   3. POST /chat. Map tools_used onto badge entries with state: "done".
+ *   4. If mode === "voice", also POST /tts and attach the resulting blob URL.
+ *
+ * The sidebar's session list is local-only state in App.jsx. The backend
+ * scopes memory by session_id, but exposes no list endpoint — so the
+ * sidebar reflects the user's local history, not the agent's checkpoints.
+ */
 export function useChat(sessionId, mode) {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const audioUrlsRef = useRef([]);
 
-  const sendMessage = useCallback(
-    async (text) => {
-      /**
-       * Insert the user message into state immediately (optimistic UI)
-       * before the network call completes so the interface feels responsive.
-       */
-      const userMsg = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: text,
-        tools_used: [],
-        audio_url: null,
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      setIsLoading(true);
+  const reset = useCallback(() => {
+    audioUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+    audioUrlsRef.current = [];
+    setMessages([]);
+    setIsLoading(false);
+  }, []);
 
-      try {
-        const data = await postChat({ message: text, mode, sessionId });
+  const sendMessage = useCallback(async (text) => {
+    if (!text || !text.trim() || isLoading) return;
+    const trimmed = text.trim();
 
-        let audio_url = null;
-        /**
-         * In voice mode, synthesize the assistant reply into an audio blob.
-         * We create a local blob URL so the AudioPlayer component can stream
-         * the audio directly without another network round-trip.
-         */
-        if (mode === "voice" && data.reply) {
-          const blob = await postTTS({ text: data.reply });
-          audio_url = URL.createObjectURL(blob);
+    const userId = `u-${Date.now()}`;
+    const assistantId = `a-${Date.now() + 1}`;
+
+    setMessages((m) => [
+      ...m,
+      { id: userId,      role: "user",      content: trimmed },
+      { id: assistantId, role: "assistant", content: "", tools: [], isLoading: true },
+    ]);
+    setIsLoading(true);
+
+    try {
+      const { reply, tools_used } = await postChat({
+        message: trimmed,
+        mode,
+        sessionId,
+      });
+
+      const tools = (tools_used || []).map((name) => ({ name, state: "done" }));
+
+      let audioUrl = null;
+      let audioVoice = null;
+      if (mode === "voice" && reply) {
+        try {
+          const { blob, voice } = await postTTS({ text: reply });
+          audioUrl = URL.createObjectURL(blob);
+          audioVoice = voice;
+          audioUrlsRef.current.push(audioUrl);
+        } catch (ttsErr) {
+          // TTS failure should not break the text reply.
+          console.error("TTS failed:", ttsErr);
         }
-
-        const assistantMsg = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.reply,
-          tools_used: data.tools_used || [],
-          audio_url,
-        };
-        setMessages((prev) => [...prev, assistantMsg]);
-      } catch (err) {
-        /**
-         * Render errors as assistant-styled messages so the user sees
-         * feedback inline rather than through a separate toast/notification.
-         */
-        const errMsg = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: `Error: ${err.message}`,
-          tools_used: [],
-          audio_url: null,
-        };
-        setMessages((prev) => [...prev, errMsg]);
-      } finally {
-        setIsLoading(false);
       }
-    },
-    [mode, sessionId]
-  );
 
-  return { messages, isLoading, sendMessage };
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === assistantId
+            ? { ...msg, content: reply, tools, audioUrl, audioVoice, isLoading: false }
+            : msg
+        )
+      );
+    } catch (err) {
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === assistantId
+            ? { ...msg, content: "", error: err.message || String(err), isLoading: false }
+            : msg
+        )
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [sessionId, mode, isLoading]);
+
+  return { messages, sendMessage, isLoading, reset };
 }

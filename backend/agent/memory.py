@@ -51,4 +51,22 @@ def apply_window(
                 non_system[i] = None
 
     windowed = [m for m in non_system[start_idx:] if m is not None]
-    return [SystemMessage(content=system_prompt)] + windowed
+
+    # Remove AIMessages whose tool_calls were never answered by ToolMessages.
+    # This can happen when the per-turn cap is hit: the capped AIMessage stays
+    # in the checkpoint but final_node never executes its tool_calls, leaving
+    # the sequence malformed for subsequent turns.
+    cleaned: list[BaseMessage] = []
+    for i, msg in enumerate(windowed):
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            unanswered = {tc.get("id") for tc in msg.tool_calls if tc.get("id")}
+            for future in windowed[i + 1:]:
+                if isinstance(future, ToolMessage):
+                    unanswered.discard(future.tool_call_id)
+                else:
+                    break  # ToolMessage run ends at first non-ToolMessage
+            if unanswered:
+                continue  # skip this orphaned AIMessage
+        cleaned.append(msg)
+
+    return [SystemMessage(content=system_prompt)] + cleaned

@@ -1,34 +1,30 @@
+import React from "react";
+import { Icons } from "../lib/icons.jsx";
+
 /**
- * Toggle control for switching between "text" and "voice" interaction modes.
- * Uses radio buttons with a shared name so the browser enforces mutual exclusivity,
- * providing a clear single-selection UX without custom logic.
+ * Segmented control: Text / Voice. The architecture spec calls for this
+ * exact name. Used in the top bar and inside the composer footer.
  */
-export default function ModeSelector({ mode, onChange }) {
+export default function ModeSelector({ mode, setMode, t }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200">
-      <span className="text-xs font-medium text-gray-500">Mode:</span>
-      <label className="flex items-center gap-1 text-sm cursor-pointer">
-        <input
-          type="radio"
-          name="mode"
-          value="text"
-          checked={mode === "text"}
-          onChange={() => onChange("text")}
-          className="accent-blue-600"
-        />
-        Text
-      </label>
-      <label className="flex items-center gap-1 text-sm cursor-pointer">
-        <input
-          type="radio"
-          name="mode"
-          value="voice"
-          checked={mode === "voice"}
-          onChange={() => onChange("voice")}
-          className="accent-blue-600"
-        />
-        Voice
-      </label>
+    <div className="tb-mode" role="tablist" aria-label="Response mode">
+      <button
+        role="tab"
+        aria-selected={mode === "text"}
+        className={`tb-mode-opt ${mode === "text" ? "is-on" : ""}`}
+        onClick={() => setMode("text")}
+      >
+        <Icons.Type size={13} /> {t("modeText")}
+      </button>
+      <button
+        role="tab"
+        aria-selected={mode === "voice"}
+        className={`tb-mode-opt ${mode === "voice" ? "is-on" : ""}`}
+        onClick={() => setMode("voice")}
+      >
+        <Icons.Volume size={13} /> {t("modeVoice")}
+      </button>
+      <span className={`tb-mode-thumb tb-mode-${mode}`} />
     </div>
   );
 }

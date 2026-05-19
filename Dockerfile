@@ -1,9 +1,13 @@
+# Multi-stage Dockerfile for TravelBuddy.
+# Stage 1 builds the React SPA, Stage 2 downloads Piper voice models from
+# Hugging Face, and Stage 3 assembles the lean production runtime.
+
 # ---- Stage 1: Build frontend ----
 FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+COPY frontend/package.json ./
+RUN npm install
 COPY frontend/ ./
 RUN npm run build
 
@@ -19,6 +23,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# libsndfile is required at runtime by the sentence-transformers model
+# used in the RAG retriever tool.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
@@ -31,6 +37,8 @@ COPY backend/ ./backend/
 COPY --from=frontend-builder /app/frontend/dist ./backend/static/
 COPY --from=voices /data/voices /data/voices
 
+# Pre-create the ChromaDB persistence directory so the RAG ingest script
+# can write without requiring a volume mount on first run.
 RUN mkdir -p /data/chroma
 
 ENV PYTHONUNBUFFERED=1

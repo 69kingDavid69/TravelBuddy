@@ -1,0 +1,58 @@
+# Render Blueprint — TravelBuddy VoiceAgent
+# Deploy: connect this repo in the Render dashboard and Render will pick up this file.
+# Build command (for reference): docker build -t voiceagent .
+# Render builds Docker services directly from the Dockerfile; no separate build command is needed.
+
+services:
+  - type: web
+    name: voiceagent
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: standard
+    healthCheckPath: /health
+
+    # Port the container listens on (matches EXPOSE 8080 in the Dockerfile)
+    port: 8080
+
+    envVars:
+      # ── Required ──────────────────────────────────────────────────────────────
+      - key: DEEPSEEK_API_KEY
+        sync: false       # secret — set in the Render dashboard, never in this file
+
+      - key: RAG_SOURCE_URL
+        sync: false       # the URL to ingest for the RAG knowledge base
+
+      # ── Optional — generic LLM provider (overrides DEEPSEEK_* if set) ────────
+      - key: LLM_API_KEY
+        sync: false       # e.g. Groq key (gsk_...)
+      - key: LLM_BASE_URL
+        sync: false       # e.g. https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        sync: false       # e.g. llama-3.3-70b-versatile
+
+      # ── Web search ────────────────────────────────────────────────────────────
+      - key: TAVILY_API_KEY
+        sync: false       # free 1k/month at tavily.com — falls back to Wikipedia if unset
+
+      # ── Optional overrides (defaults shown) ───────────────────────────────────
+      - key: DEEPSEEK_MODEL
+        sync: false       # default: deepseek-chat
+
+      - key: PIPER_VOICE_ES
+        sync: false       # default: es_MX-claude-high
+
+      - key: PIPER_VOICE_EN
+        sync: false       # default: en_US-amy-medium
+
+      - key: PIPER_VOICES_DIR
+        sync: false       # default: /data/voices (baked into the image)
+
+      - key: CHROMA_DIR
+        sync: false       # default: /data/chroma
+
+      - key: ALLOWED_ORIGINS
+        sync: false       # comma-separated list; set to your Render service URL
+
+      - key: MEMORY_WINDOW
+        sync: false       # default: 7 (number of message pairs kept in context)

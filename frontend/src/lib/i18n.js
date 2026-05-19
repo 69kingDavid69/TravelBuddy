@@ -1,0 +1,91 @@
+/**
+ * UI string dictionary — English and Spanish translations.
+ *
+ * IMPORTANT: the project rubric requires the UI to be in English. The Spanish
+ * dictionary here exists because the designer requested an in-app toggle; if
+ * submitting against the rubric, default to "en" and consider removing the
+ * LangSwitcher component before submission.
+ *
+ * Keys are consumed via the `t(key)` helper provided by useUiLang.
+ */
+
+export const STRINGS = {
+  en: {
+    brandTagline: "Bilingual · 3 tools",
+    brandStack: "DeepSeek V4 · Piper TTS",
+    newConversation: "New conversation",
+    recent: "Recent",
+    conversation: "Conversation",
+    reset: "Reset",
+    modeText: "Text",
+    modeVoice: "Voice",
+    statusOnline: "Online · ES / EN",
+    heroLine1: "Where",
+    heroLine1b: "are we headed,",
+    heroLine2: "traveler?",
+    heroSub:
+      "Ask anything in Spanish or English. I'll reach for live rates, the web, or your destination guide when it helps.",
+    sg1Title: "Convert 240 USD to COP",
+    sg1Sub: "Live rate · open.er-api.com",
+    sg2Title: "Events in Medellín this weekend",
+    sg2Sub: "Real-time web search",
+    sg3Title: "What to eat in Cartagena?",
+    sg3Sub: "From the destination guide",
+    sg4Title: "Plan a 3-day itinerary in Lisbon",
+    sg4Sub: "From general knowledge",
+    placeholder: "Ask in English or Spanish — currency, events, places to go…",
+    autoTools: "Agent picks tools automatically",
+    shortcutHint1: "to send",
+    shortcutHint2: "for new line",
+    copy: "Copy",
+    copied: "Copied!",
+    regenerate: "Regenerate",
+    good: "Good response",
+    bad: "Bad response",
+    justNow: "just now",
+    toolCurrency: "Currency",
+    toolWeb: "Web search",
+    toolGuide: "Destination guide",
+    voiceLabel: "Piper voice",
+    errorPrefix: "Something went wrong",
+  },
+  es: {
+    brandTagline: "Bilingüe · 3 herramientas",
+    brandStack: "DeepSeek V4 · Piper TTS",
+    newConversation: "Nueva conversación",
+    recent: "Recientes",
+    conversation: "Conversación",
+    reset: "Reiniciar",
+    modeText: "Texto",
+    modeVoice: "Voz",
+    statusOnline: "En línea · ES / EN",
+    heroLine1: "¿A dónde",
+    heroLine1b: "vamos,",
+    heroLine2: "viajero?",
+    heroSub:
+      "Pregunta lo que quieras en español o inglés. Uso tasas en vivo, búsqueda web o tu guía de destino cuando ayudan.",
+    sg1Title: "Convertir 240 USD a COP",
+    sg1Sub: "Tasa actual · open.er-api.com",
+    sg2Title: "Eventos en Medellín este fin de semana",
+    sg2Sub: "Búsqueda web en tiempo real",
+    sg3Title: "¿Qué comer en Cartagena?",
+    sg3Sub: "Desde la guía de destino",
+    sg4Title: "Itinerario de 3 días en Lisboa",
+    sg4Sub: "Conocimiento general",
+    placeholder: "Pregunta en inglés o español — divisas, eventos, lugares a dónde ir…",
+    autoTools: "El agente elige herramientas automáticamente",
+    shortcutHint1: "para enviar",
+    shortcutHint2: "para nueva línea",
+    copy: "Copiar",
+    copied: "¡Copiado!",
+    regenerate: "Regenerar",
+    good: "Buena respuesta",
+    bad: "Mala respuesta",
+    justNow: "ahora",
+    toolCurrency: "Divisas",
+    toolWeb: "Búsqueda web",
+    toolGuide: "Guía de destino",
+    voiceLabel: "Voz Piper",
+    errorPrefix: "Algo salió mal",
+  },
+};

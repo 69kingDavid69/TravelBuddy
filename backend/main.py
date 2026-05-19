@@ -76,7 +76,7 @@ async def chat(request: ChatRequest):
 
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content=request.message)]},
-            config,
+            {**config, "recursion_limit": 20},
         )
 
         new_messages = result["messages"][prev_count:]

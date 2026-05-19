@@ -8,7 +8,7 @@ from typing import Annotated
 from typing_extensions import TypedDict
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage, AIMessage
+from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -17,6 +17,8 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from backend.settings import settings
 from backend.agent.memory import apply_window
+
+_MAX_TOOL_CALLS_PER_TURN = 3
 
 
 class AgentState(TypedDict):
@@ -30,15 +32,24 @@ _checkpointer = MemorySaver()
 _graph = None
 
 
-def _route_after_llm(state: AgentState) -> str:
-    """Decide whether to invoke tools or end the turn.
+def _tool_calls_this_turn(messages: list[BaseMessage]) -> int:
+    """Count tool invocations since the most recent HumanMessage."""
+    count = 0
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            break
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            count += len(msg.tool_calls)
+    return count
 
-    If the last assistant message contains tool_calls, route to the tool node;
-    otherwise end the graph execution so the reply reaches the client.
-    """
+
+def _route_after_llm(state: AgentState) -> str:
+    """Route to tools, a forced-final LLM call, or END."""
     last_msg = state["messages"][-1]
     if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
-        return "tool_node"
+        if _tool_calls_this_turn(state["messages"]) <= _MAX_TOOL_CALLS_PER_TURN:
+            return "tool_node"
+        return "final_node"  # cap hit — force a conclusive answer without more tool calls
     return END
 
 
@@ -51,9 +62,9 @@ def build_graph(tools: list, system_prompt: str):
 
     # Low temperature (0.2) reduces hallucination for fact-oriented travel queries
     llm = ChatOpenAI(
-        model=settings.DEEPSEEK_MODEL,
-        base_url=settings.DEEPSEEK_BASE_URL,
-        api_key=settings.DEEPSEEK_API_KEY,
+        model=settings.effective_model,
+        base_url=settings.effective_base_url,
+        api_key=settings.effective_api_key,
         temperature=0.2,
     )
     llm_with_tools = llm.bind_tools(tools)
@@ -73,14 +84,46 @@ def build_graph(tools: list, system_prompt: str):
         response = llm_with_tools.invoke(windowed)
         return {"messages": [response]}
 
+    # Variant of llm_node without tools — used to force a final answer when the
+    # per-turn tool-call cap is exceeded so the agent cannot keep retrying.
+    llm_plain = ChatOpenAI(
+        model=settings.effective_model,
+        base_url=settings.effective_base_url,
+        api_key=settings.effective_api_key,
+        temperature=0.2,
+    )
+
+    def final_node(state: AgentState, config: RunnableConfig):
+        mode = config.get("configurable", {}).get("mode", "text")
+        effective_prompt = system_prompt + (
+            "\n\nYou have already searched for information. "
+            "Now give the user a complete, helpful answer based on what the tools returned. "
+            "Do NOT call any more tools."
+        )
+        if mode == "voice":
+            effective_prompt += (
+                "\n\nCURRENT MODE: voice — use plain prose only. "
+                "No markdown, no bullet lists, no asterisks, no URLs."
+            )
+        windowed = apply_window(state["messages"], effective_prompt, settings.MEMORY_WINDOW)
+        # Drop any trailing AIMessage that has pending tool_calls — the API
+        # requires every tool_calls entry to be followed by ToolMessages, which
+        # we are intentionally skipping here.
+        while windowed and isinstance(windowed[-1], AIMessage) and windowed[-1].tool_calls:
+            windowed.pop()
+        response = llm_plain.invoke(windowed)
+        return {"messages": [response]}
+
     tool_node = ToolNode(tools)
 
     builder = StateGraph(AgentState)
     builder.add_node("llm_node", llm_node)
     builder.add_node("tool_node", tool_node)
+    builder.add_node("final_node", final_node)
     builder.add_edge(START, "llm_node")
     builder.add_conditional_edges("llm_node", _route_after_llm)
     builder.add_edge("tool_node", "llm_node")
+    builder.add_edge("final_node", END)
 
     _graph = builder.compile(checkpointer=_checkpointer)
     return _graph

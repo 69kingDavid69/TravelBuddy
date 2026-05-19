@@ -1,44 +1,68 @@
+import React, { useEffect, useRef, useState } from "react";
+import { Icons } from "../lib/icons.jsx";
+import ModeSelector from "./ModeSelector.jsx";
+
 /**
- * Text input bar with a send button, rendered as a form.
- * Handles its own local input state and communicates the trimmed
- * message value upward only on valid submission.
+ * Composer. Auto-grows up to 180px tall. Enter sends; Shift+Enter inserts a
+ * newline. Disabled while a /chat request is in flight.
  */
-import { useState } from "react";
-
-export default function InputBar({ onSend, disabled }) {
+export default function InputBar({ onSend, disabled, mode, setMode, t }) {
   const [text, setText] = useState("");
+  const ref = useRef(null);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const trimmed = text.trim();
-    /** Guard against empty or whitespace-only submissions. */
-    if (!trimmed || disabled) return;
-    onSend(trimmed);
-    /** Clear the input immediately after sending for a clean UX. */
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.height = "auto";
+    ref.current.style.height = Math.min(180, ref.current.scrollHeight) + "px";
+  }, [text]);
+
+  const submit = () => {
+    const v = text.trim();
+    if (!v || disabled) return;
+    onSend(v);
     setText("");
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="border-t border-gray-200 px-4 py-3 flex gap-2 bg-white"
-    >
-      <input
-        type="text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Type a message..."
-        disabled={disabled}
-        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-      />
-      <button
-        type="submit"
-        /** Disable the button when loading or when there is no meaningful input. */
-        disabled={disabled || !text.trim()}
-        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Send
-      </button>
-    </form>
+    <div className="tb-composer-wrap">
+      <div className="tb-composer">
+        <textarea
+          ref={ref}
+          className="tb-input"
+          placeholder={t("placeholder")}
+          value={text}
+          rows={1}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
+        <div className="tb-composer-bar">
+          <div className="tb-composer-left">
+            <ModeSelector mode={mode} setMode={setMode} t={t} />
+            <span className="tb-tool-hint">
+              <Icons.Sparkle size={11} /> {t("autoTools")}
+            </span>
+          </div>
+          <div className="tb-composer-right">
+            <span className="tb-counter">{text.length}</span>
+            <button
+              className="tb-send"
+              onClick={submit}
+              disabled={!text.trim() || disabled}
+              aria-label="Send"
+            >
+              {disabled ? <Icons.Stop size={14} /> : <Icons.ArrowUp size={14} stroke={2} />}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="tb-shortcut-hint">
+        <kbd>Enter</kbd> {t("shortcutHint1")} · <kbd>Shift</kbd>+<kbd>Enter</kbd> {t("shortcutHint2")}
+      </div>
+    </div>
   );
 }

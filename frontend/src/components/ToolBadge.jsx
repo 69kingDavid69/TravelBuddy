@@ -1,24 +1,26 @@
+import React from "react";
+import { Icons } from "../lib/icons.jsx";
+import { TOOLS } from "../lib/tools.js";
+
 /**
- * Displays a colored pill badge indicating which backend tool was invoked.
- * Each tool gets a distinct color to help users quickly scan which capabilities
- * were used in a response. Unknown tool names fall back to a neutral gray.
+ * Renders a single tool name returned in `tools_used`. States:
+ *   - "done"    — default; check icon after the label
+ *   - "running" — dotted spinner; reserved for streaming UIs (the current
+ *                 /chat endpoint returns synchronously so most badges go
+ *                 straight to "done")
  */
-const TOOL_COLORS = {
-  currency_converter: "bg-green-100 text-green-800 border-green-300",
-  web_search: "bg-blue-100 text-blue-800 border-blue-300",
-  rag_retriever: "bg-purple-100 text-purple-800 border-purple-300",
-};
-
-export default function ToolBadge({ tool }) {
-  /** Resolve the color class from the map; default to gray for unknown tools. */
-  const colorClass =
-    TOOL_COLORS[tool] || "bg-gray-100 text-gray-700 border-gray-300";
-
+export default function ToolBadge({ name, state = "done", t }) {
+  const meta = TOOLS[name];
+  if (!meta) return null;
+  const Ico = Icons[meta.icon];
   return (
-    <span
-      className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full border ${colorClass} mr-1`}
-    >
-      {tool}
+    <span className={`tb-tool tb-tool-${state}`}>
+      <span className="tb-tool-ico"><Ico size={11} stroke={1.7} /></span>
+      <span className="tb-tool-name">{t(meta.labelKey)}</span>
+      {state === "running" && (
+        <span className="tb-tool-dots" aria-hidden="true"><i /><i /><i /></span>
+      )}
+      {state === "done" && <Icons.Check size={11} stroke={2} />}
     </span>
   );
 }

@@ -10,8 +10,8 @@ services:
       - CHROMA_DIR=/data/chroma
       - ALLOWED_ORIGINS=http://localhost:8080
     volumes:
-      - voiceagent-data:/data
+      # Bind-mount ./data so voice files and Chroma DB persist between runs
+      # without needing a named volume. Run scripts/setup_local.sh first to
+      # populate ./data/voices/ with the Piper voice models.
+      - ./data:/data
     restart: unless-stopped
-
-volumes:
-  voiceagent-data:

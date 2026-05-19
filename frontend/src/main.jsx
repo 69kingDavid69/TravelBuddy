@@ -1,15 +1,16 @@
 /**
- * Application entry point.
- * Bootstraps the React component tree into the DOM with StrictMode
- * to catch potential side-effects during double-rendering in development.
+ * Application entry point — mounts the root React component into the DOM.
+ *
+ * StrictMode is enabled to surface lifecycle issues during development;
+ * it has no effect in production builds.
  */
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.jsx";
 import "./index.css";
-import App from "./App";
 
-createRoot(document.getElementById("root")).render(
-  <StrictMode>
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
     <App />
-  </StrictMode>
+  </React.StrictMode>
 );
