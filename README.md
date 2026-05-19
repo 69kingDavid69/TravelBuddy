@@ -2,6 +2,8 @@
 
 A multimodal conversational agent with text and voice modes, live tools, RAG retrieval, and bilingual support (English and Spanish).
 
+**Live demo:** [https://travelbuddy-ai.fly.dev](https://travelbuddy-ai.fly.dev)
+
 ## Table of contents
 
 - [Quick start](#quick-start)
@@ -18,27 +20,47 @@ A multimodal conversational agent with text and voice modes, live tools, RAG ret
 
 ## Quick start
 
+### Option A — One-command local start (recommended)
+
 ```bash
-# 1. Get the code
+# 1. Clone the repo
 git clone https://github.com/69kingDavid69/TravelBuddy.git
 cd TravelBuddy
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env — set LLM_API_KEY to your Groq key (free at console.groq.com)
-# or set DEEPSEEK_API_KEY if you prefer DeepSeek
+# 2. Set up Python environment
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
+.venv/bin/pip install piper-tts==1.4.2
 
-# 3. Run with Docker (recommended)
+# 3. Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# 4. Configure environment
+cp .env.example .env
+# Edit .env — set at minimum:
+#   DEEPSEEK_API_KEY  (or LLM_API_KEY for Groq)
+#   TAVILY_API_KEY    (free at tavily.com — enables live web search)
+
+# 5. Start everything with one command
+bash scripts/start_local.sh
+# Opens:  http://localhost:5173  (frontend)
+#         http://localhost:8000  (backend API)
+# Press Ctrl+C to stop both servers.
+```
+
+The `start_local.sh` script starts the FastAPI backend (with `--reload`) and the Vite dev server concurrently, shows coloured output from each, and kills both processes cleanly on Ctrl+C.
+
+### Option B — Docker
+
+```bash
+cp .env.example .env   # fill in your API keys
 docker compose up --build
 # Open http://localhost:8080
-
-# 4. Or run locally (no Docker)
-pip install -r backend/requirements.txt && pip install piper-tts==1.4.2
-cd frontend && npm install && cd ..
-# Terminal 1: uvicorn backend.main:app --reload --port 8000
-# Terminal 2: cd frontend && npm run dev
-# Open http://localhost:5173
 ```
+
+### Option C — Live demo
+
+No setup needed: [https://travelbuddy-ai.fly.dev](https://travelbuddy-ai.fly.dev)
 
 ## LLM providers
 
@@ -235,14 +257,26 @@ cd frontend && npm install && npm run dev
 
 ## Deploy to Fly.io
 
+**Live deployment:** [https://travelbuddy-ai.fly.dev](https://travelbuddy-ai.fly.dev)
+
+To deploy your own instance:
+
 ```bash
 # Install Fly CLI: https://fly.io/docs/flyctl/install/
-fly launch
-fly secrets set DEEPSEEK_API_KEY=sk-...
-fly deploy
+fly apps create <your-app-name>
+fly volumes create travelbuddy_data --region iad --size 1 --yes
+
+fly secrets set \
+  DEEPSEEK_API_KEY=sk-... \
+  TAVILY_API_KEY=tvly-... \
+  RAG_SOURCE_URL=https://en.wikivoyage.org/wiki/Medell%C3%ADn \
+  ALLOWED_ORIGINS=https://<your-app-name>.fly.dev
+
+fly deploy --remote-only
+fly machines start   # if the machine is stopped after first deploy
 ```
 
-Configuration: `fly.toml` — region `mia`, shared-cpu-1x, 1024MB RAM, 1GB persistent volume.
+Configuration: [`fly.toml`](fly.toml) — region `iad`, shared-cpu-1x, 1 GB RAM, 1 GB persistent volume (`/data`).
 
 ## Environment variables
 
