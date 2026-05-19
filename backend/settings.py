@@ -1,7 +1,15 @@
+"""Application configuration loaded from environment variables / .env file.
+
+All settings are typed and validated via pydantic-settings.  Sensible defaults are
+provided for every field except DEEPSEEK_API_KEY, which must be supplied explicitly.
+"""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Typed application settings sourced from environment variables and a .env file."""
+
     DEEPSEEK_API_KEY: str
     DEEPSEEK_MODEL: str = "deepseek-chat"
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
@@ -17,6 +25,7 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origins_list(self) -> list[str]:
+        """Split the comma-separated ALLOWED_ORIGINS string into a clean list."""
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
 

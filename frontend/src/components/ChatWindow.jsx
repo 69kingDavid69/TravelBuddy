@@ -1,3 +1,8 @@
+/**
+ * Scrollable container that renders the list of chat messages.
+ * Displays a placeholder prompt when the conversation is empty
+ * to guide the user toward their first interaction.
+ */
 import MessageBubble from "./MessageBubble";
 
 export default function ChatWindow({ messages }) {

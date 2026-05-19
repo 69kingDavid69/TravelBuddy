@@ -1,3 +1,8 @@
+/**
+ * Toggle control for switching between "text" and "voice" interaction modes.
+ * Uses radio buttons with a shared name so the browser enforces mutual exclusivity,
+ * providing a clear single-selection UX without custom logic.
+ */
 export default function ModeSelector({ mode, onChange }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200">

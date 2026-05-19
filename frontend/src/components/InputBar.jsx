@@ -1,3 +1,8 @@
+/**
+ * Text input bar with a send button, rendered as a form.
+ * Handles its own local input state and communicates the trimmed
+ * message value upward only on valid submission.
+ */
 import { useState } from "react";
 
 export default function InputBar({ onSend, disabled }) {
@@ -6,8 +11,10 @@ export default function InputBar({ onSend, disabled }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     const trimmed = text.trim();
+    /** Guard against empty or whitespace-only submissions. */
     if (!trimmed || disabled) return;
     onSend(trimmed);
+    /** Clear the input immediately after sending for a clean UX. */
     setText("");
   };
 
@@ -26,6 +33,7 @@ export default function InputBar({ onSend, disabled }) {
       />
       <button
         type="submit"
+        /** Disable the button when loading or when there is no meaningful input. */
         disabled={disabled || !text.trim()}
         className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
       >

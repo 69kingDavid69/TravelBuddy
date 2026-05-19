@@ -1,3 +1,9 @@
+/**
+ * Renders a single chat message bubble with dynamic alignment and styling.
+ * User messages appear on the right with a blue background; assistant messages
+ * appear on the left with a white card style. Optionally renders tool badges
+ * and an audio player when those properties are present on the message object.
+ */
 import ToolBadge from "./ToolBadge";
 import AudioPlayer from "./AudioPlayer";
 
@@ -8,6 +14,7 @@ export default function MessageBubble({ message }) {
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+      {/** Constrain the bubble width so long messages don't stretch edge-to-edge. */}
       <div className="max-w-[80%]">
         {hasTools && (
           <div className="mb-1">
@@ -25,6 +32,7 @@ export default function MessageBubble({ message }) {
         >
           {message.content}
         </div>
+        {/** Audio player is only rendered in voice mode when a blob URL exists. */}
         {hasAudio && <AudioPlayer audioUrl={message.audio_url} />}
       </div>
     </div>

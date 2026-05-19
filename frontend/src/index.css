@@ -1,3 +1,8 @@
+/**
+ * Global stylesheet entry point.
+ * Loads Tailwind CSS layers: base (normalize/reset), components
+ * (utility-class-driven component styles), and utilities (atomic classes).
+ */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

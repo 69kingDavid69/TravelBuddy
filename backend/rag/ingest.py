@@ -12,6 +12,11 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 
 def ingest(url: str, chroma_dir: str = "/data/chroma") -> None:
+    """Fetch a URL, extract visible text, chunk it, embed, and persist into ChromaDB.
+
+    Designed for travel destination pages (e.g. Wikivoyage) so the RAG retriever
+    tool can serve grounded, destination-specific answers.
+    """
     print(f"Fetching {url} ...")
     resp = httpx.get(
         url,

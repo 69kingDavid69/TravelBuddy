@@ -1,3 +1,9 @@
+"""LangGraph agent graph definition for the TravelBuddy assistant.
+
+Builds a simple agent loop: LLM node -> (tool calls? -> tool node -> LLM node | END).
+Checkpointing via in-memory saver enables conversation continuity across turns.
+"""
+
 from typing import Annotated
 from typing_extensions import TypedDict
 
@@ -14,14 +20,22 @@ from backend.agent.memory import apply_window
 
 
 class AgentState(TypedDict):
+    """Shared state flowing through the agent graph — just a message history."""
     messages: Annotated[list[BaseMessage], add_messages]
 
 
+# In-memory checkpointer persists conversation state between requests.
+# For production, replace with a durable backend (e.g. PostgresSaver).
 _checkpointer = MemorySaver()
 _graph = None
 
 
 def _route_after_llm(state: AgentState) -> str:
+    """Decide whether to invoke tools or end the turn.
+
+    If the last assistant message contains tool_calls, route to the tool node;
+    otherwise end the graph execution so the reply reaches the client.
+    """
     last_msg = state["messages"][-1]
     if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
         return "tool_node"
@@ -29,8 +43,13 @@ def _route_after_llm(state: AgentState) -> str:
 
 
 def build_graph(tools: list, system_prompt: str):
+    """Compile the LangGraph agent graph with the given tools and system prompt.
+
+    Must be called once at startup before any /chat request is served.
+    """
     global _graph
 
+    # Low temperature (0.2) reduces hallucination for fact-oriented travel queries
     llm = ChatOpenAI(
         model=settings.DEEPSEEK_MODEL,
         base_url=settings.DEEPSEEK_BASE_URL,
@@ -40,13 +59,16 @@ def build_graph(tools: list, system_prompt: str):
     llm_with_tools = llm.bind_tools(tools)
 
     def llm_node(state: AgentState, config: RunnableConfig):
+        """Invoke the LLM with tool bindings and the current message history."""
         mode = config.get("configurable", {}).get("mode", "text")
         effective_prompt = system_prompt
+        # Voice mode appends additional formatting constraints to the system prompt
         if mode == "voice":
             effective_prompt += (
                 "\n\nCURRENT MODE: voice — use plain prose only. "
                 "No markdown, no bullet lists, no asterisks, no URLs."
             )
+        # Apply sliding window to keep context manageable and save tokens
         windowed = apply_window(state["messages"], effective_prompt, settings.MEMORY_WINDOW)
         response = llm_with_tools.invoke(windowed)
         return {"messages": [response]}
@@ -65,4 +87,5 @@ def build_graph(tools: list, system_prompt: str):
 
 
 def get_graph():
+    """Return the singleton compiled agent graph (built during lifespan startup)."""
     return _graph

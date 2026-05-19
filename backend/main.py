@@ -1,3 +1,9 @@
+"""FastAPI application entry point for the TravelBuddy backend.
+
+Provides the REST API surface: health check, chat (LangGraph agent), TTS synthesis,
+and static file serving for the frontend SPA.
+"""
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +25,7 @@ _system_prompt: str = ""
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Load the system prompt and build the LangGraph agent on startup."""
     global _system_prompt
     _system_prompt = _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
     build_graph(ALL_TOOLS, _system_prompt)
@@ -27,6 +34,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="TravelBuddy API", version="1.0.0", lifespan=lifespan)
 
+# CORS is configured from env vars so the frontend dev server can call the API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
@@ -38,11 +46,17 @@ app.add_middleware(
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
+    """Return service health status and the active LLM model."""
     return {"status": "ok", "model": settings.DEEPSEEK_MODEL}
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    """Handle a chat message through the LangGraph agent.
+
+    Computes only the *new* messages returned since the previous state snapshot
+    so the client gets an incremental reply.
+    """
     graph = get_graph()
     config = {
         "configurable": {
@@ -52,6 +66,7 @@ async def chat(request: ChatRequest):
     }
 
     try:
+        # Snapshot the message count *before* this turn so we can isolate new messages
         prev_state = await graph.aget_state(config)
         prev_count = (
             len(prev_state.values.get("messages", []))
@@ -67,6 +82,7 @@ async def chat(request: ChatRequest):
         new_messages = result["messages"][prev_count:]
         tools_used = extract_tools_used(new_messages)
 
+        # Walk backwards to find the last assistant reply with actual content
         reply = ""
         for msg in reversed(new_messages):
             if isinstance(msg, AIMessage) and msg.content:
@@ -81,10 +97,12 @@ async def chat(request: ChatRequest):
 
 @app.post("/tts")
 async def tts(request: TTSRequest):
+    """Synthesize text to speech via Piper TTS and return WAV audio."""
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     try:
+        # Lazy-import so Piper is only required when /tts is actually called
         from backend.tts.piper_client import synthesize
 
         wav_bytes, voice = synthesize(request.text)
